@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sankéo - Estimation Bus en Temps Réel</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        header {
+            background-color: #d71921; /* Rouge Sankéo */
+            color: white;
+            padding: 1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+
+        #map {
+            flex: 1;
+            width: 100%;
+        }
+
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            max-width: 320px;
+        }
+
+        .info-panel h3 {
+            margin-bottom: 8px;
+            font-size: 1rem;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: bold;
+            background: #e0e0e0;
+            margin-top: 5px;
+        }
+
+        .badge.traffic-slow {
+            background: #ffc107;
+            color: #000;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h2>Sankéo — Position estimée (Trafic inclus)</h2>
+    </header>
+
+    <div id="map"></div>
+
+    <div class="info-panel">
+        <h3>Ligne 1 - Gare TGV ➔ Catalogne</h3>
+        <p>Progression du trajet : <b id="progress-val">--</b>%</p>
+        <span id="traffic-status" class="badge">Analyse du trafic...</span>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Initialisation de la carte centrée sur Perpignan
+        const map = L.map('map').setView([42.6986, 2.8914], 15);
+
+        // Fond de carte OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+
+        // Icone personnalisée pour le Bus
+        const busIcon = L.divIcon({
+            html: '<div style="background:#d71921; color:white; padding:6px; border-radius:50%; font-size:14px; text-align:center;">🚌</div>',
+            className: '',
+            iconSize: [30, 30]
+        });
+
+        let busMarker = null;
+
+        async function updateBusPosition() {
+            try {
+                const res = await fetch('/api/estimate-bus');
+                const data = await res.json();
+
+                // Placer les arrêts sur la carte
+                L.marker([data.stopA.lat, data.stopA.lng]).addTo(map).bindPopup(data.stopA.name);
+                L.marker([data.stopB.lat, data.stopB.lng]).addTo(map).bindPopup(data.stopB.name);
+
+                // Mettre à jour la position du bus
+                const pos = [data.estimatedPosition.lat, data.estimatedPosition.lng];
+                if (!busMarker) {
+                    busMarker = L.marker(pos, { icon: busIcon }).addTo(map);
+                } else {
+                    busMarker.setLatLng(pos);
+                }
+
+                // Mettre à jour l'interface
+                document.getElementById('progress-val').innerText = data.progress;
+                
+                const trafficBadge = document.getElementById('traffic-status');
+                if (parseFloat(data.trafficRatio) < 0.9) {
+                    trafficBadge.innerText = "Trafic dense (Retard estimé)";
+                    trafficBadge.className = "badge traffic-slow";
+                } else {
+                    trafficBadge.innerText = "Trafic fluide";
+                    trafficBadge.className = "badge";
+                }
+
+            } catch (err) {
+                console.error("Erreur de récupération :", err);
+            }
+        }
+
+        // Première exécution et rafraîchissement toutes les 5 secondes
+        updateBusPosition();
+        setInterval(updateBusPosition, 5000);
+    </script>
+</body>
+</html>
